@@ -218,6 +218,36 @@ def write_commits(repo: str, branch: str, dates: list[dt.date], commits: int,
     return n
 
 
+def push_in_batches(repo: str, remote: str, branch: str, batch: int, force: bool) -> None:
+    """Push the branch a few hundred commits at a time.
+
+    GitHub only records contributions for roughly the newest 1,000 commits of a
+    single push, so a big drawing has to go up in steps.
+    """
+    out = git(repo, "ls-remote", remote, f"refs/heads/{branch}")
+    remote_sha = out.split()[0] if out else ""
+    known = remote_sha and subprocess.run(
+        ["git", "-C", repo, "merge-base", "--is-ancestor", remote_sha, branch],
+        capture_output=True).returncode == 0
+    if remote_sha and not known and not force:
+        raise SystemExit(f"{remote} already has a different {branch} branch (maybe an old drawing). "
+                         "Rerun with --force-push to replace it.")
+    rng = f"{remote_sha}..{branch}" if known else branch
+    commits = git(repo, "rev-list", "--reverse", "--first-parent", rng).split()
+    if not commits:
+        print("Nothing new to push.")
+        return
+    stops = commits[batch - 1::batch]
+    if not stops or stops[-1] != commits[-1]:
+        stops.append(commits[-1])
+    for i, sha in enumerate(stops, 1):
+        args = ["push", "-q"]
+        if force and i == 1:
+            args.append("--force")
+        print(f"Pushing batch {i}/{len(stops)}...")
+        git(repo, *args, remote, f"{sha}:refs/heads/{branch}")
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -226,7 +256,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Write text into your GitHub contribution graph with backdated commits.",
         epilog="Without --repo nothing is written: you just get a preview.",
     )
-    p.add_argument("text", help='text to draw, e.g. "HELLO" (A-Z, 0-9, some punctuation, <3)')
+    p.add_argument("--push-only", action="store_true",
+                   help="don't draw anything; just push --repo to --push REMOTE in batches")
+    p.add_argument("text", nargs="?", help='text to draw, e.g. "HELLO" (A-Z, 0-9, some punctuation, <3)')
     when = p.add_mutually_exclusive_group()
     when.add_argument("--year", type=int,
                       help="start at the first Sunday of this year (default: last year)")
@@ -243,12 +275,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--email", help="author email; must be a verified email on your GitHub account "
                                     "(default: git config user.email)")
     p.add_argument("--hour", type=int, default=12, help="UTC hour for commit times (default 12)")
+    p.add_argument("--push", metavar="REMOTE",
+                   help="after writing, push to this remote (e.g. origin) in batches; GitHub only "
+                        "counts about 1,000 commits per push, so one big push loses most of the drawing")
+    p.add_argument("--batch", type=int, default=900, help="commits per push with --push (default 900)")
+    p.add_argument("--force-push", action="store_true",
+                   help="with --push, allow replacing what is on the remote branch (e.g. an old drawing)")
     p.add_argument("-y", "--yes", action="store_true", help="skip the confirmation prompt")
     return p.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     a = parse_args(argv)
+    if a.push_only:
+        if not (a.repo and a.push):
+            raise SystemExit("--push-only needs --repo PATH and --push REMOTE.")
+        push_in_batches(a.repo, a.push, a.branch, a.batch, a.force_push)
+        print("Pushed.")
+        return 0
+    if not a.text:
+        raise SystemExit("Give the text to draw, e.g. commit_canvas.py \"HELLO\"")
     if a.start:
         base = a.start
     else:
@@ -280,7 +326,13 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     n = write_commits(a.repo, a.branch, dates, a.commits, name, email, a.hour)
     print(f"Wrote {n} commits.")
-    print("Next: push this repo to GitHub (e.g. git push -u origin main). The graph updates within a few minutes.")
+    if a.push:
+        push_in_batches(a.repo, a.push, a.branch, a.batch, a.force_push)
+        print("Pushed. Your graph should update within a few minutes.")
+    else:
+        print(f"Next: push in batches so GitHub counts every commit (it only counts ~1,000 per push):")
+        print(f"  python3 {os.path.basename(sys.argv[0])} --push-only --repo {a.repo} --push origin")
+        print("  (or rerun with --push origin next time)")
     print("To undo it later, delete that GitHub repo and the commits disappear from your graph.")
     return 0
 
