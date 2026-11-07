@@ -47,19 +47,30 @@ It's wide, so widen your terminal if lines wrap.
 ## Write it for real
 
 ```bash
-# 1. Create an empty repo on GitHub, e.g. "my-graph-art" (public, or private with
+# 1. Create an empty repo on GitHub, e.g. "graph-art" (public, or private with
 #    "Private contributions" turned on in your profile settings).
-# 2. Write the commits into a local repo:
-python3 commit_canvas.py "HELLO" --year 2021 --repo ./my-graph-art \
-    --email you@example.com
-# 3. Push it:
-cd my-graph-art
-git remote add origin git@github.com:<you>/my-graph-art.git
-git push -u origin main
+# 2. Write the commits and push them in one go:
+git clone git@github.com:<you>/graph-art.git ~/graph-art
+python3 commit_canvas.py "HELLO" --year 2021 --repo ~/graph-art \
+    --email you@example.com --push origin
 ```
 
-The graph updates within a few minutes. Run the script several times with different
-`--year`/`--start` values against the same `--repo` to add more text.
+`--push` sends the commits up 900 at a time. **Don't push a big drawing with a single
+`git push`:** GitHub only counts roughly the newest 1,000 commits of one push, so most of
+the drawing silently goes missing. If you already wrote commits without `--push`, use:
+
+```bash
+python3 commit_canvas.py --push-only --repo ~/graph-art --push origin
+```
+
+Run the script several times with different `--year`/`--start` values against the same
+`--repo` to add more text, e.g. one line per year:
+
+```bash
+python3 commit_canvas.py "EMPLOYEE" --year 2024 --repo ~/graph-art --push origin
+python3 commit_canvas.py "OR HIRE"  --year 2023 --repo ~/graph-art --push origin
+python3 commit_canvas.py "ME NOW"   --year 2022 --repo ~/graph-art --push origin
+```
 
 ## Options
 
@@ -74,6 +85,10 @@ The graph updates within a few minutes. Run the script several times with differ
 | `--branch NAME` | Branch to write to (default `main`) |
 | `--name`, `--email` | Commit author. Defaults to your `git config` values |
 | `--hour H` | UTC hour for the commit times (default 12) |
+| `--push REMOTE` | After writing, push to that remote in batches |
+| `--batch N` | Commits per push with `--push` (default 900) |
+| `--force-push` | Let `--push` replace what's already on the remote branch, e.g. an old drawing |
+| `--push-only` | Draw nothing; just batch-push `--repo` to `--push REMOTE` |
 | `-y` | Skip the confirmation prompt |
 
 Supported characters: `A-Z 0-9 space ! . , : ' - _ + = / ( ) ? # < >` and `<3` (or `♥`) for a heart.
@@ -87,6 +102,7 @@ Supported characters: `A-Z 0-9 space ! . , : ' - _ + = / ( ) ? # < >` and `<3` (
 - **Year boundaries:** GitHub shows each year separately, so a letter that straddles 1 January
   is split across two year views. The preview shows exactly where the split falls; nudge
   `--start` or `--offset` if a letter gets cut.
+- **Big drawings need batched pushes.** Use `--push` (see above), not a single `git push`.
 - **Future dates** are allowed but only show up once those days arrive.
 - **To undo**, delete the GitHub repo you pushed to; its commits vanish from your graph.
 
