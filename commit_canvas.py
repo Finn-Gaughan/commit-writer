@@ -132,27 +132,31 @@ def preview(grid: list[list[bool]], start: dt.date, commits: int) -> None:
     lit = sum(sum(r) for r in grid)
     print(f"Text spans {width} weeks: {start} (Sun) -> {end} (Sat)")
     print(f"{lit} lit days x {commits} commits = {lit * commits} commits\n")
+    print("The text:\n")
+    for row in grid:
+        print("  " + "".join("██" if px else "  " for px in row).rstrip())
+    print("\nHow it lands on your GitHub graph (one block per year):\n")
     lit_days = set(pixel_dates(grid, start))
     # One block per calendar year, laid out like GitHub's year view.
     for year in range(start.year, end.year + 1):
         jan1, dec31 = dt.date(year, 1, 1), dt.date(year, 12, 31)
         first_col = jan1 - dt.timedelta(days=(jan1.weekday() + 1) % 7)  # Sunday on/before Jan 1
         ncols = (dec31 - first_col).days // 7 + 1
-        label = [" "] * (ncols + 3)
+        label = [" "] * (2 * ncols + 3)
         free_from = 0
         for c in range(ncols):
             d = first_col + dt.timedelta(weeks=c)
             m = d + dt.timedelta(days=6)  # the week's Saturday decides the month label
             if m.year == year and (c == 0 or (m - dt.timedelta(weeks=1)).month != m.month) and c >= free_from:
-                label[c:c + 3] = m.strftime("%b")
-                free_from = c + 4
+                label[2 * c:2 * c + 3] = m.strftime("%b")
+                free_from = c + 2
         print(f"     {year}")
         print("     " + "".join(label).rstrip())
         for row in range(7):
             cells = []
             for c in range(ncols):
                 d = first_col + dt.timedelta(weeks=c, days=row)
-                cells.append(" " if d.year != year else ("█" if d in lit_days else "·"))
+                cells.append("  " if d.year != year else ("██" if d in lit_days else "░░"))
             print(f"{DAY_LABELS[row]}  {''.join(cells)}")
         print()
 
